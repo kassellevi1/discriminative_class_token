@@ -9,6 +9,7 @@ class RunConfig:
     class_from:int
     mse_loss:float
     perceptual_loss:float
+    clip_similarity_loss:float
 
     train: bool
     evaluate: bool
@@ -42,7 +43,7 @@ class RunConfig:
     weight_decay: float = 1e-2
     eps: float = 1e-08
     max_grad_norm: str = "1"
-    seed: int = 3344
+    seed: int = 344
 
     # Generative model
     guidance_scale: int = 7

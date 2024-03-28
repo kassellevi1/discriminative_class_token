@@ -1,4 +1,4 @@
-from loss_utils import PerceptualLoss
+from loss_utils import PerceptualLoss,ClipSimilarityLoss
 import torch
 
 import os
@@ -60,9 +60,6 @@ def train(config: RunConfig):
         date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
 
         img_dir_path_with_datetime = f"{img_dir_path}_{date_time_str}"
-
-        Path(img_dir_path_with_datetime).mkdir(parents=True, exist_ok=True)
-
 
         # Stable model
         unet, vae, text_encoder, scheduler, tokenizer = utils.prepare_stable(config)
@@ -152,13 +149,19 @@ def train(config: RunConfig):
             weight_decay=config.weight_decay,
             eps=config.eps,
         )
+        prompt_wo_cf = train_dataset[0]['instace_prompt_without_token']
+        print(f"text for clip: {prompt_wo_cf}")
         criterion = torch.nn.CrossEntropyLoss().cuda()
-        mse_criterion = torch.nn.MSELoss()
+        mse_criterion = torch.nn.MSELoss().cuda()
         perceptual_criterion = PerceptualLoss().cuda()
+        clip_similarity_criterion = ClipSimilarityLoss(prompt_wo_cf)
+
         weight_classification = 1.0
         weight_pixelwise_mse = config.mse_loss
         weight_perceptual = config.perceptual_loss
-        img_dir_with_date_and_lambdas = f"{img_dir_path_with_datetime}_mse_{weight_pixelwise_mse}_perceptual_{weight_perceptual}"
+        weight_clip_similarity = config.clip_similarity_loss
+
+        img_dir_with_date_and_lambdas = f"{img_dir_path_with_datetime}_mse_{weight_pixelwise_mse}_perceptual_{weight_perceptual}_weight_clip_similarity_{weight_clip_similarity}"
         Path(img_dir_with_date_and_lambdas).mkdir(parents=True, exist_ok=True)
         accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -358,10 +361,15 @@ def train(config: RunConfig):
                             perceptual_loss = perceptual_criterion(image_inp, image_out)
                         else:
                             perceptual_loss = torch.tensor(0.0)
+                        if weight_clip_similarity > 0:
+                            clip_similarity_loss = clip_similarity_criterion(image_out)
+                        else:
+                            clip_similarity_loss = torch.tensor(0.0)
                             
                         combined_loss = (weight_classification * classification_loss) + \
                                         (weight_pixelwise_mse * pixelwise_mse_loss) + \
-                                        (weight_perceptual * perceptual_loss)
+                                        (weight_perceptual * perceptual_loss)+ \
+                                        (weight_clip_similarity * clip_similarity_loss)
                         # log
                         txt = f"On epoch {epoch} \n"
                         with torch.no_grad():
@@ -372,6 +380,7 @@ def train(config: RunConfig):
                             txt += f"classification_loss: {classification_loss.detach().item()}, \n"
                             txt += f"perceptual_loss: {perceptual_loss.detach().item()}, \n"
                             txt += f"pixelwise_mse_loss: {pixelwise_mse_loss.detach().item()}, \n"
+                            txt += f"weight_clip_similarity: {clip_similarity_loss.detach().item()}, \n"
                             txt += f"combined_loss: {combined_loss.detach().item()}"
                             
                             with open("run_log.txt", "a") as f:
