@@ -7,6 +7,9 @@ class RunConfig:
     # Exp setup
     class_index: int
     class_from:int
+    mse_loss:float
+    perceptual_loss:float
+
     train: bool
     evaluate: bool
 

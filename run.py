@@ -156,9 +156,10 @@ def train(config: RunConfig):
         mse_criterion = torch.nn.MSELoss()
         perceptual_criterion = PerceptualLoss().cuda()
         weight_classification = 1.0
-        weight_pixelwise_mse = 1.0
-        weight_perceptual = 1.0
-
+        weight_pixelwise_mse = config.mse_loss
+        weight_perceptual = config.perceptual_loss
+        img_dir_with_date_and_lambdas = f"{img_dir_path_with_datetime}_mse_{weight_pixelwise_mse}_perceptual_{weight_perceptual}"
+        Path(img_dir_with_date_and_lambdas).mkdir(parents=True, exist_ok=True)
         accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
             mixed_precision=config.mixed_precision,
@@ -352,11 +353,11 @@ def train(config: RunConfig):
                         if weight_pixelwise_mse > 0:
                             pixelwise_mse_loss = mse_criterion(image_inp, image_out)
                         else:
-                            pixelwise_mse_loss = 0
+                            pixelwise_mse_loss = torch.tensor(0.0)
                         if weight_perceptual > 0:
                             perceptual_loss = perceptual_criterion(image_inp, image_out)
                         else:
-                            perceptual_loss = 0
+                            perceptual_loss = torch.tensor(0.0)
                             
                         combined_loss = (weight_classification * classification_loss) + \
                                         (weight_pixelwise_mse * pixelwise_mse_loss) + \
@@ -368,9 +369,9 @@ def train(config: RunConfig):
                             txt += f"Desired class: {IDX2NAME[class_infer]}, \n"
                             txt += f"class from: {IDX2NAME[class_from]}, \n"
                             txt += f"Image class: {IDX2NAME[pred_class]}, \n"
-                            txt += f"classification_loss: {classification_loss.detach().item()}"
-                            txt += f"perceptual_loss: {perceptual_loss.detach().item()}"
-                            txt += f"pixelwise_mse_loss: {pixelwise_mse_loss.detach().item()}"
+                            txt += f"classification_loss: {classification_loss.detach().item()}, \n"
+                            txt += f"perceptual_loss: {perceptual_loss.detach().item()}, \n"
+                            txt += f"pixelwise_mse_loss: {pixelwise_mse_loss.detach().item()}, \n"
                             txt += f"combined_loss: {combined_loss.detach().item()}"
                             
                             with open("run_log.txt", "a") as f:
@@ -379,7 +380,7 @@ def train(config: RunConfig):
                             utils.numpy_to_pil(
                                 image_out.permute(0, 2, 3, 1).cpu().detach().numpy()
                             )[0].save(
-                                f"{img_dir_path_with_datetime}/{epoch}_{IDX2NAME[pred_class]}_{classification_loss.detach().item()}.jpg",
+                                f"{img_dir_with_date_and_lambdas}/{epoch}_{IDX2NAME[pred_class]}_{classification_loss.detach().item()}.jpg",
                                 "JPEG",
                             )
                         if go_away_from_class:
