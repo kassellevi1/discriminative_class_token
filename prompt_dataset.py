@@ -2,7 +2,7 @@ from torch.utils.data import Dataset
 
 
 imagenet_templates_small = [
-    "A form far photo of {}",
+    "A photo of {}",
 ]
 
 
@@ -32,9 +32,12 @@ class PromptDataset(Dataset):
     def __getitem__(self, index):
         example = {}
         text = imagenet_templates_small[index % self.number_of_prompts]
+        text_without_token = text[:-2]
+        text_without_token += f"a {self.prompt_suffix}"
         text = text.format(self.placeholder_token)
         text += f" {self.prompt_suffix}"
         example["instance_prompt"] = text
+        example["instace_prompt_without_token"] = text_without_token
         example["instance_prompt_ids"] = self.tokenizer(
             text,
             padding="do_not_pad",
@@ -44,3 +47,5 @@ class PromptDataset(Dataset):
         ).input_ids[0]
 
         return example
+
+      
