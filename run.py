@@ -45,10 +45,15 @@ def train(config: RunConfig):
             continue
         if running_class_index > stop_class_idx:
             break
-
+        
         class_name = class_name.split(",")[0]
-        print(f"Start training class token for {class_name}")
-        img_dir_path = f"img/{class_name}/train"
+        class_infer = config.class_index - 1
+        class_from = config.class_from - 1
+        if class_infer==class_from:
+          go_away_from_class = True
+        class_from_name = IDX2NAME[config.class_from - 1].split(",")[0]
+        print(f"Start training class token for {class_from_name}")
+        img_dir_path = f"img/from_{class_from_name}_to_{class_name}/train"
         if Path(img_dir_path).exists():
             shutil.rmtree(img_dir_path)
         date_time_str = datetime.now().strftime("%Y-%m-%d_%H-%M")
@@ -62,8 +67,9 @@ def train(config: RunConfig):
         unet, vae, text_encoder, scheduler, tokenizer = utils.prepare_stable(config)
 
         #  Extend tokenizer and add a discriminative token ###
-        class_infer = config.class_index - 1
-        prompt_suffix = " ".join(class_name.lower().split("_"))
+
+        prompt_suffix = " ".join(class_from_name.lower().split("_"))
+
 
         ## Add the placeholder token in tokenizer
         num_added_tokens = tokenizer.add_tokens(config.placeholder_token)
@@ -315,13 +321,23 @@ def train(config: RunConfig):
                         output = classification_model(image).logits
 
                         if classification_loss is None:
-                            classification_loss = -criterion(
-                                output, torch.LongTensor([class_infer]).cuda()
-                            )
+                            if go_away_from_class:
+                              classification_loss = -criterion(
+                                  output, torch.LongTensor([class_infer]).cuda()
+                              )
+                            else:
+                              classification_loss = criterion(
+                                  output, torch.LongTensor([class_infer]).cuda()
+                              )
                         else:
-                            classification_loss += -criterion(
-                                output, torch.LongTensor([class_infer]).cuda()
-                            )
+                            if go_away_from_class:
+                              classification_loss += -criterion(
+                                  output, torch.LongTensor([class_infer]).cuda()
+                              )
+                            else:
+                              classification_loss += criterion(
+                                  output, torch.LongTensor([class_infer]).cuda()
+                              )
 
                         pred_class = torch.argmax(output).item()
                         total_loss += classification_loss.detach().item()
@@ -331,6 +347,7 @@ def train(config: RunConfig):
                         with torch.no_grad():
                             txt += f"{batch['texts']} \n"
                             txt += f"Desired class: {IDX2NAME[class_infer]}, \n"
+                            txt += f"class from: {IDX2NAME[class_from]}, \n"
                             txt += f"Image class: {IDX2NAME[pred_class]}, \n"
                             txt += f"Loss: {classification_loss.detach().item()}"
                             with open("run_log.txt", "a") as f:
@@ -342,9 +359,12 @@ def train(config: RunConfig):
                                 f"{img_dir_path_with_datetime}/{epoch}_{IDX2NAME[pred_class]}_{classification_loss.detach().item()}.jpg",
                                 "JPEG",
                             )
-
-                        if pred_class != class_infer:
-                            correct += 1
+                        if go_away_from_class:
+                            if pred_class != class_infer:
+                              correct += 1
+                        else:  
+                          if pred_class == class_infer:
+                              correct += 1
 
                         torch.nn.utils.clip_grad_norm_(
                             text_encoder.get_input_embeddings().parameters(),
@@ -375,10 +395,10 @@ def train(config: RunConfig):
 
                         # Checks if the accelerator has performed an optimization step behind the scenes
                         if accelerator.sync_gradients:
-                            if total_loss > 2 * min_loss:
-                                print("training collapse, try different hp")
-                                config.seed += 1
-                                print("updated seed", config.seed)
+                            # if total_loss > 2 * min_loss:
+                            #     print("training collapse, try different hp")
+                            #     config.seed += 1
+                            #     print("updated seed", config.seed)
                             print("update")
                             if total_loss < min_loss:
                                 min_loss = total_loss
