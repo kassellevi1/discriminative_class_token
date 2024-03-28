@@ -1,3 +1,4 @@
+from loss_utils import PerceptualLoss
 import torch
 
 import os
@@ -152,6 +153,11 @@ def train(config: RunConfig):
             eps=config.eps,
         )
         criterion = torch.nn.CrossEntropyLoss().cuda()
+        mse_criterion = torch.nn.MSELoss()
+        perceptual_criterion = PerceptualLoss().cuda()
+        weight_classification = 1.0
+        weight_pixelwise_mse = 1.0
+        weight_perceptual = 1.0
 
         accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -204,6 +210,7 @@ def train(config: RunConfig):
             print(f"Token already exist at {token_path}")
             return
         else:
+            image_input = None
             for epoch in range(config.num_train_epochs):
                 print(f"Epoch {epoch}")
                 generator = torch.Generator(
@@ -316,7 +323,8 @@ def train(config: RunConfig):
                         image = (image / 2 + 0.5).clamp(0, 1)
 
                         image_out = image
-
+                        if epoch == 0:
+                            image_inp = image_out
                         image = utils.transform_img_tensor(image, config)
                         output = classification_model(image).logits
 
@@ -341,7 +349,18 @@ def train(config: RunConfig):
 
                         pred_class = torch.argmax(output).item()
                         total_loss += classification_loss.detach().item()
-
+                        if weight_pixelwise_mse > 0:
+                            pixelwise_mse_loss = mse_criterion(image_inp, image_out)
+                        else:
+                            pixelwise_mse_loss = 0
+                        if weight_perceptual > 0:
+                            perceptual_loss = perceptual_criterion(image_inp, image_out)
+                        else:
+                            perceptual_loss = 0
+                            
+                        combined_loss = (weight_classification * classification_loss) + \
+                                        (weight_pixelwise_mse * pixelwise_mse_loss) + \
+                                        (weight_perceptual * perceptual_loss)
                         # log
                         txt = f"On epoch {epoch} \n"
                         with torch.no_grad():
@@ -349,7 +368,11 @@ def train(config: RunConfig):
                             txt += f"Desired class: {IDX2NAME[class_infer]}, \n"
                             txt += f"class from: {IDX2NAME[class_from]}, \n"
                             txt += f"Image class: {IDX2NAME[pred_class]}, \n"
-                            txt += f"Loss: {classification_loss.detach().item()}"
+                            txt += f"classification_loss: {classification_loss.detach().item()}"
+                            txt += f"perceptual_loss: {perceptual_loss.detach().item()}"
+                            txt += f"pixelwise_mse_loss: {pixelwise_mse_loss.detach().item()}"
+                            txt += f"combined_loss: {combined_loss.detach().item()}"
+                            
                             with open("run_log.txt", "a") as f:
                                 print(txt, file=f)
                             print(txt)
