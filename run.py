@@ -15,8 +15,24 @@ from config import RunConfig
 import pyrallis
 import shutil
 
+from models.p2p_editor import P2PEditor
+from utils import latent2image, load_512
+from matplotlib import pyplot as plt
+import numpy as np
+import argparse
+import json
+from PIL import Image
+import random
+from models.p2p.scheduler_dev import DDIMSchedulerDev
+from diffusers import StableDiffusionPipeline
+from models.p2p.inversion import  NullInversion
+from models.p2p.attention_control import AttentionStore
+from models.p2p.p2p_guidance_forward import p2p_guidance_forward
+
 
 def train(config: RunConfig):
+    
+
     # A range of imagenet classes to run on
     start_class_idx = config.class_index
     stop_class_idx = config.class_index
@@ -96,7 +112,7 @@ def train(config: RunConfig):
         #  Initialise the newly added placeholder token
         token_embeds = text_encoder.get_input_embeddings().weight.data
         token_embeds[placeholder_token_id] = token_embeds[initializer_token_id]
-
+        
         # Define dataloades
 
         def collate_fn(examples):
@@ -119,6 +135,37 @@ def train(config: RunConfig):
             number_of_prompts=config.number_of_prompts,
             epoch_size=config.epoch_size,
         )
+
+        if config.null_inversion:
+            print("start inverting ....")
+            scheduler = DDIMSchedulerDev(beta_start=0.00085,beta_end=0.012,beta_schedule="scaled_linear",clip_sample=False,
+                                            set_alpha_to_one=False)
+            num_ddim_steps=50
+            image_path="arctic_fox.jpg"
+            image_gt= image_gt = load_512(image_path)
+            prompt_src= train_dataset.__getitem__(0)['instance_prompt']
+            print(f"train_dataset = {train_dataset.__getitem__(0)['instance_prompt']}")
+            guidance_scale=7.5
+            device= torch.device('cuda') 
+            controller = AttentionStore()
+            ldm_stable = StableDiffusionPipeline.from_pretrained("CompVis/stable-diffusion-v1-4", scheduler=scheduler)
+            ldm_stable.scheduler.set_timesteps(num_ddim_steps) 
+            ldm_stable.text_encoder = text_encoder
+            ldm_stable.to(device)
+            null_inversion = NullInversion(model=ldm_stable,num_ddim_steps=num_ddim_steps)
+            _, _, x_stars, uncond_embeddings = null_inversion.invert(image_gt=image_gt, prompt=prompt_src,guidance_scale=guidance_scale,num_inner_steps=0)
+            x_t = x_stars[-1] 
+            reconstruct_latent, x_t = p2p_guidance_forward(model=ldm_stable,prompt=[prompt_src], controller=controller, latent=x_t, 
+                                             num_inference_steps=num_ddim_steps, 
+                                             guidance_scale=guidance_scale, 
+                                             generator=None, 
+                                             uncond_embeddings=uncond_embeddings) 
+            reconstruct_image = latent2image(model=ldm_stable.vae, latents=reconstruct_latent)[0]
+            plt.imshow(reconstruct_image)
+            plt.axis('off')  # Hide the axis
+            plt.savefig("test.png")
+            print("finish inverting ....")
+
 
         train_batch_size = config.batch_size
         train_dataloader = torch.utils.data.DataLoader(
@@ -250,6 +297,8 @@ def train(config: RunConfig):
                         ).to(dtype=weight_dtype)
 
                         latents = init_latent
+                        if config.null_inversion:
+                          latents = reconstruct_latent
                         scheduler.set_timesteps(config.num_of_SD_inference_steps)
                         grad_update_step = config.num_of_SD_inference_steps - 1
 

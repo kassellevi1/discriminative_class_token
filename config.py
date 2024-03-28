@@ -9,12 +9,13 @@ class RunConfig:
     class_from:int
     train: bool
     evaluate: bool
+    null_inversion: bool = True
 
     # Id of the experiment
     exp_id: str = "demo"
 
     # Whether to use Stable Diffusion v2.1
-    sd_2_1: bool = True
+    sd_2_1: bool = False 
 
     # the classifier (Options: inet (ImageNet), inat (iNaturalist), cub (CUB200))
     classifier: str = "inet"
