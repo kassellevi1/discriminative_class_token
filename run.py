@@ -1,3 +1,4 @@
+from ddim_inversion import ddim_inversion
 from loss_utils import PerceptualLoss,ClipSimilarityLoss
 import torch
 
@@ -61,6 +62,7 @@ def train(config: RunConfig):
 
         img_dir_path_with_datetime = f"{img_dir_path}_{date_time_str}"
 
+        
         # Stable model
         unet, vae, text_encoder, scheduler, tokenizer = utils.prepare_stable(config)
 
@@ -161,7 +163,7 @@ def train(config: RunConfig):
         weight_perceptual = config.perceptual_loss
         weight_clip_similarity = config.clip_similarity_loss
 
-        img_dir_with_date_and_lambdas = f"{img_dir_path_with_datetime}_mse_{weight_pixelwise_mse}_perceptual_{weight_perceptual}_weight_clip_similarity_{weight_clip_similarity}"
+        img_dir_with_date_and_lambdas = f"{img_dir_path_with_datetime}_mse_{weight_pixelwise_mse}_perceptual_{weight_perceptual}_clip_{weight_clip_similarity}"
         Path(img_dir_with_date_and_lambdas).mkdir(parents=True, exist_ok=True)
         accelerator = Accelerator(
             gradient_accumulation_steps=config.gradient_accumulation_steps,
@@ -260,7 +262,11 @@ def train(config: RunConfig):
                             latents_shape, generator=generator, device="cuda"
                         ).to(dtype=weight_dtype)
 
-                        latents = init_latent
+                        if config.image_inversion_path != "":
+                            latents = ddim_inversion(config.image_inversion_path, num_steps=60, verify=False)
+                        else:
+                            latents = init_latent
+                            
                         scheduler.set_timesteps(config.num_of_SD_inference_steps)
                         grad_update_step = config.num_of_SD_inference_steps - 1
 
