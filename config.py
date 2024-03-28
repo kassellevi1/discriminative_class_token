@@ -13,7 +13,7 @@ class RunConfig:
 
     train: bool
     evaluate: bool
-
+    image_inversion_path: str = ''
     # Id of the experiment
     exp_id: str = "demo"
 
@@ -49,7 +49,7 @@ class RunConfig:
     guidance_scale: int = 7
     height: int = 512
     width: int = 512
-    num_of_SD_inference_steps: int = 30
+    num_of_SD_inference_steps: int = 60
 
     # Discrimnative tokens
     placeholder_token: str = "newclas"
