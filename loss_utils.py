@@ -33,7 +33,6 @@ class ClipSimilarityLoss():
         inputs = self.clip_processor(text=[self.text_description], images=image, return_tensors="pt", padding=True)
         outputs = self.clip_model(**inputs)
         logits_per_image = outputs.logits_per_image
-        print(logits)
         similarity = logits_per_image.flatten()
         loss = -similarity.mean()
         return loss

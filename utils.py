@@ -1,4 +1,8 @@
 from PIL import Image
+import os
+from PIL import Image
+import matplotlib.pyplot as plt
+from os.path import join
 from diffusers import (
     AutoencoderKL,
     DDPMScheduler,
@@ -16,6 +20,39 @@ import kornia
 # From timm.data.constants
 IMAGENET_DEFAULT_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_DEFAULT_STD = (0.229, 0.224, 0.225)
+import os
+from PIL import Image
+import matplotlib.pyplot as plt
+from os.path import join
+
+def plot_images_with_epochs(image_folder, title):
+    all_images = [f for f in os.listdir(image_folder) if (f.endswith('.jpg') and not f.startswith('plot_to_present'))]
+
+    epochs = [int(f.split('_')[0]) for f in all_images]
+
+    sorted_images = [x for _,x in sorted(zip(epochs,all_images))]
+
+    max_epoch = max(epochs)
+    indices = [round(i * (len(sorted_images) - 1) / 9) for i in range(10)]
+    selected_images = [sorted_images[i] for i in indices]
+
+    fig, axes = plt.subplots(1, 10, figsize=(20, 2))
+    fig.suptitle(title)
+
+    for ax, img_name in zip(axes.flat, selected_images):
+        epoch, class_name, loss = img_name.rsplit('_', 2)
+        img_path = os.path.join(image_folder, img_name)
+        img = Image.open(img_path)
+        ax.imshow(img)
+        shortened_class_name = class_name.split(',')[0]
+        ax.set_xlabel(f"epoch: {epoch} | class: {shortened_class_name}", fontsize=7)  # Use set_xlabel for bottom placement
+        ax.xaxis.labelpad = 4  # Adjust the padding to move closer or farther
+        ax.tick_params(axis='x', which='both', bottom=False, top=False, labelbottom=False)  # Hide x-axis ticks
+        ax.tick_params(axis='y', which='both', left=False, right=False, labelleft=False)  # Hide y-axis ticks
+
+    save_path = join(image_folder,"plot_to_present.jpg")
+    plt.subplots_adjust(wspace=0, hspace=0)
+    plt.savefig(save_path, bbox_inches='tight', pad_inches=0.1)
 
 
 def numpy_to_pil(images):

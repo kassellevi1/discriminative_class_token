@@ -24,7 +24,7 @@ class RunConfig:
     classifier: str = "inet"
 
     # Affect training time
-    early_stopping: int = 35
+    early_stopping: int = 200
     num_train_epochs: int = 200
 
     # affect variability of the training images
@@ -38,18 +38,18 @@ class RunConfig:
     skip_exists: bool = False
 
     # Train and Optimization
-    lr: float = 0.00025 * epoch_size
+    lr: float = 0.0025 * epoch_size
     betas: tuple = field(default_factory=lambda: (0.9, 0.999))
     weight_decay: float = 1e-2
     eps: float = 1e-08
     max_grad_norm: str = "1"
-    seed: int = 344
+    seed: int = 34
 
     # Generative model
     guidance_scale: int = 7
     height: int = 512
     width: int = 512
-    num_of_SD_inference_steps: int = 60
+    num_of_SD_inference_steps: int = 100
 
     # Discrimnative tokens
     placeholder_token: str = "newclas"

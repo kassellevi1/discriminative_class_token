@@ -10,6 +10,7 @@ from accelerate import Accelerator
 from diffusers import StableDiffusionPipeline
 import prompt_dataset
 import utils
+from utils import plot_images_with_epochs
 from inet_classes import IDX2NAME as IDX2NAME_INET
 from datetime import datetime
 
@@ -53,6 +54,8 @@ def train(config: RunConfig):
         class_from = config.class_from - 1
         if class_infer==class_from:
           go_away_from_class = True
+        else:
+          go_away_from_class = False
         class_from_name = IDX2NAME[config.class_from - 1].split(",")[0]
         print(f"Start training class token for {class_from_name}")
         img_dir_path = f"img/from_{class_from_name}_to_{class_name}/train"
@@ -151,7 +154,7 @@ def train(config: RunConfig):
             weight_decay=config.weight_decay,
             eps=config.eps,
         )
-        prompt_wo_cf = train_dataset[0]['instace_prompt_without_token']
+        prompt_wo_cf = train_dataset[0]['instance_prompt_without_token']
         print(f"text for clip: {prompt_wo_cf}")
         criterion = torch.nn.CrossEntropyLoss().cuda()
         mse_criterion = torch.nn.MSELoss().cuda()
@@ -211,12 +214,15 @@ def train(config: RunConfig):
             config.height // 8,
             config.width // 8,
         )
+        if config.image_inversion_path != "":
+            ddim_latent = ddim_inversion(config.image_inversion_path,train_dataset[0]['instance_prompt'], num_steps=config.num_of_SD_inference_steps, verify=True)
 
         if config.skip_exists and os.path.isfile(token_path):
             print(f"Token already exist at {token_path}")
             return
         else:
             image_input = None
+
             for epoch in range(config.num_train_epochs):
                 print(f"Epoch {epoch}")
                 generator = torch.Generator(
@@ -234,7 +240,8 @@ def train(config: RunConfig):
                         # here `guidance_scale` is defined analog to the guidance weight `w` of equation (2)
                         # of the Imagen paper: https://arxiv.org/pdf/2205.11487.pdf . `guidance_scale = 1`
                         # corresponds to doing no classifier free guidance.
-                        do_classifier_free_guidance = config.guidance_scale > 1.0
+                        # do_classifier_free_guidance = config.guidance_scale > 1.0
+                        do_classifier_free_guidance = config.guidance_scale > 10.0
 
                         # get unconditional embeddings for classifier free guidance
                         if do_classifier_free_guidance:
@@ -263,7 +270,7 @@ def train(config: RunConfig):
                         ).to(dtype=weight_dtype)
 
                         if config.image_inversion_path != "":
-                            latents = ddim_inversion(config.image_inversion_path, num_steps=60, verify=False)
+                            latents = ddim_latent
                         else:
                             latents = init_latent
                             
@@ -272,7 +279,8 @@ def train(config: RunConfig):
 
                         # generate image
                         for i, t in enumerate(scheduler.timesteps):
-                            if i < grad_update_step:  # update only partial
+                            # if i < grad_update_step:  # update only partial
+                            if False:  # update only partial
                                 with torch.no_grad():
                                     latent_model_input = (
                                         torch.cat([latents] * 2)
@@ -396,6 +404,7 @@ def train(config: RunConfig):
                                 image_out.permute(0, 2, 3, 1).cpu().detach().numpy()
                             )[0].save(
                                 f"{img_dir_with_date_and_lambdas}/{epoch}_{IDX2NAME[pred_class]}_{classification_loss.detach().item()}.jpg",
+                                # f"{img_dir_with_date_and_lambdas}/epoch_{epoch}_seed_{config.seed}.jpg",
                                 "JPEG",
                             )
                         if go_away_from_class:
@@ -435,9 +444,9 @@ def train(config: RunConfig):
                         # Checks if the accelerator has performed an optimization step behind the scenes
                         if accelerator.sync_gradients:
                             # if total_loss > 2 * min_loss:
-                            #     print("training collapse, try different hp")
-                            #     config.seed += 1
-                            #     print("updated seed", config.seed)
+                              # print("training collapse, try different hp")
+                              # config.seed += 1
+                              # print("updated seed", config.seed)
                             print("update")
                             if total_loss < min_loss:
                                 min_loss = total_loss
@@ -477,6 +486,7 @@ def train(config: RunConfig):
                 print(f"Current accuracy {correct / config.epoch_size}")
 
                 if (correct / config.epoch_size > 0.7) or current_early_stopping < 0:
+                    plot_images_with_epochs(img_dir_with_date_and_lambdas,f"from_{class_from_name}_to_{class_name}")
                     break
 
 
